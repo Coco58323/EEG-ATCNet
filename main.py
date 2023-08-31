@@ -144,7 +144,7 @@ def train(dataset_conf, train_conf, results_path):
             labels = y_test_onehot.argmax(axis=-1)
             acc[sub, train]  = accuracy_score(labels, y_pred)
             kappa[sub, train] = cohen_kappa_score(labels, y_pred)
-              
+
             # Get the current 'OUT' time to calculate the 'run' training time
             out_run = time.time()
             # Print & write performance measures for each run
@@ -154,8 +154,8 @@ def train(dataset_conf, train_conf, results_path):
             log_write.write(info +'\n')
             # If current training run is better than previous runs, save the history.
             if(BestSubjAcc < acc[sub, train]):
-                 BestSubjAcc = acc[sub, train]
-                 bestTrainingHistory = history
+                BestSubjAcc = acc[sub, train]
+                bestTrainingHistory = history
         
         # Store the path of the best model among several runs
         best_run = np.argmax(acc[sub,:])
@@ -175,7 +175,7 @@ def train(dataset_conf, train_conf, results_path):
         if (LearnCurves == True):
             print('Plot Learning Curves ....... ')
             draw_learning_curves(bestTrainingHistory)
-          
+
     # Get the current 'OUT' time to calculate the overall training time
     out_exp = time.time()
     info = '\nTime: {:.1f} h   '.format( (out_exp-in_exp)/(60*60) )
@@ -249,7 +249,7 @@ def test(model, dataset_conf, results_path, allRuns = True):
                 np.average(kappa_allRuns[sub, :]), kappa_allRuns[sub,:].std() )
         print(info)
         log_write.write('\n'+info)
-      
+
     # Print & write the average performance measures for all subjects     
     info = '\nAverage of {} subjects - best runs:\nAccuracy = {:.4f}   Kappa = {:.4f}\n'.format(
         n_sub, np.average(acc_bestRun), np.average(kappa_bestRun)) 
@@ -323,20 +323,20 @@ def getModel(model_name):
 #%%
 def run():
     # Get dataset path
-    data_path = os.path.expanduser('~') + '/BCI Competition IV/BCI Competition IV-2a/'
+    data_path = os.path.expanduser('~') + '/ms/EEG-ATCNet/dataset/'
     
     # Create a folder to store the results of the experiment
     results_path = os.getcwd() + "/results"
     if not  os.path.exists(results_path):
-      os.makedirs(results_path)   # Create a new directory if it does not exist 
-      
+        os.makedirs(results_path)   # Create a new directory if it does not exist 
+
     # Set dataset paramters 
     dataset_conf = { 'n_classes': 4, 'n_sub': 9, 'n_channels': 22, 'data_path': data_path,
                 'isStandard': True, 'LOSO': False}
     # Set training hyperparamters
     train_conf = { 'batch_size': 64, 'epochs': 1000, 'patience': 300, 'lr': 0.0009,
-                  'LearnCurves': True, 'n_train': 10, 'model':'ATCNet'}
-           
+                'LearnCurves': True, 'n_train': 10, 'model':'ATCNet'}
+
     # Train the model
     # train(dataset_conf, train_conf, results_path)
 
