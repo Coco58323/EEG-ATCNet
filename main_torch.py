@@ -1,3 +1,4 @@
+# %%
 import numpy as np
 from torch.utils.data import TensorDataset
 import torch
@@ -9,17 +10,19 @@ import time
 import os
 import matplotlib.pyplot as plt
 import numpy as np
-# from pytorchtools import EarlyStopping
+from sklearn.metrics import cohen_kappa_score
 import time
 from preprocess import get_data
 import csv
-# import sys
+import sys
+sys.path.append('./')
+from utils import EarlyStopping
 # sys.path.append('/home/chengxiangxin/mieeg') # 添加模块所在的文件夹路径
 # import multi_head as mh
 
 
 
-
+# %%
 class DepthwiseConv2d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, bias=False):
         super(DepthwiseConv2d, self).__init__()
@@ -43,7 +46,6 @@ class CausalConv1d(nn.Module):
         x = F.pad(x, (self.padding, 0))
         return self.conv1d(x)
     
-
 class TCN_block(nn.Module):
     def __init__(self, depth=2):
         super(TCN_block, self).__init__()
@@ -92,7 +94,6 @@ class TCN_block(nn.Module):
             # block = torch.add(block_o,block)
             block = self.Activation[i](block)
         return block
-
 class MultiHeadAttention(nn.Module):
     def __init__(self, input_size, num_heads):
         super().__init__()
@@ -308,124 +309,19 @@ class ATCNet(nn.Module):
 
         return sw_concat
     
-
+# %%
 
 def train():
     data_path = os.getcwd() + '/dataset/'
-    dataset_conf = { 'n_classes': 4, 'n_sub': 9, 'n_channels': 22, 'data_path': data_path,
-                'isStandard': True, 'LOSO': False}
-    #Get dataset paramters
-    n_classes = dataset_conf.get('n_classes')
-    n_sub = dataset_conf.get('n_sub')
-    data_path = dataset_conf.get('data_path')
-    isStandard = dataset_conf.get('isStandard')
-    LOSO = dataset_conf.get('LOSO')
-
-    device = "cuda" #if torch.cuda.is_available() else "cpu"
-
-    criterion = nn.CrossEntropyLoss() 
-
-
-
-    for i in range(n_sub):
-        # if i != 1:
-        #     continue
-        #BCIC2a 9人；SMR_BCI1 14人；OpenBMI 54人；
-        print(f' Subject = {i:.1f}')
-
-        model = ATCNet()
-        #加载数据集
-        X_train, _, y_train_onehot, X_test, _, y_test_onehot = get_data(data_path, i, LOSO, isStandard)
-        eeg_train = torch.from_numpy(X_train)
-        label_train = torch.from_numpy(y_train_onehot)
-        eeg_test = torch.from_numpy(X_test)
-        label_test = torch.from_numpy(y_test_onehot)
-        train_dataset=TensorDataset(eeg_train,label_train)
-        test_dataset=TensorDataset(eeg_test,label_test)
-        # val_dataset=TensorDataset(eeg_val,label_val)
-        train_loader = torch.utils.data.DataLoader(dataset=train_dataset,batch_size=64, shuffle=True)
-        test_loader = torch.utils.data.DataLoader(dataset=test_dataset,batch_size=300, shuffle=False)
-        # val_loader = torch.utils.data.DataLoader(dataset=val_dataset,batch_size=32, shuffle=True)
-
-        # The number of training epochs.
-        n_epochs = 5000
-        # patience = 300	# 当验证集损失在连续20次训练周期中都没有得到降低时，停止模型训练，以防止模型过拟合
-        # early_stopping = EarlyStopping(patience, verbose=True)	
-        model.to(device)
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.0009)
-        TL = []
-        TA = []
-        VL = []
-        VA = []
-        #开始迭代训练
-        for epoch in range(n_epochs):
-            # ---------- Training ----------
-            model.train()
-            train_loss = []
-            train_accs = []
-
-        # Iterate the training set by batches.
-            for k,batch in enumerate(train_loader):
-                t1 = time.time()
-            # A batch consists of image data and corresponding labels.
-                eeg,label = batch
-                # eeg = eeg.transpose(0,2,1)
-                eeg = eeg.to(torch.float32)
-                # label = label.to(torch.float32)
-            # Forward the data. (Make sure data and model are on the same device.)
-                pred = model(eeg.to(device))
-                loss = criterion(pred.cpu(), label)
-                optimizer.zero_grad()
-            # Compute the gradients for parameters.
-                loss.backward()
-
-                #裁剪
-                nn.utils.clip_grad_norm_(model.conv_block.depthwise.parameters(), 1.0)
-                for j in range(5):
-                    nn.utils.clip_grad_norm_(model.slideOut_list[j].parameters(), 0.25)
-                # nn.utils.clip_grad_norm_(model.out_2.parameters(), 0.25)
-            # Update the parameters with computed gradients.
-                optimizer.step()
-                train_loss.append(loss.item())
-                acc = (pred.argmax(dim=-1) == label.to(device).argmax(dim=-1)).float().mean()
-                train_accs.append(acc)
-
-            train_loss = sum(train_loss) / len(train_loss)
-            train_acc = sum(train_accs) / len(train_accs)
-            TL.append(train_loss)
-            TA.append(train_acc.cpu().item())
-            t2 = time.time()
-            print(t2-t1)
-            print(f"[ Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}")
-            model.eval()
-            valid_loss = []
-            valid_accs = []
-            #开始验证数据集
-            # Iterate the validation set by batches.
-            for k,batch in enumerate(test_loader):
-                eeg,label = batch
-                eeg = eeg.to(torch.float32)
-                # label = label.to(torch.float32)
-
-                # print(eeg.shape)
-                with torch.no_grad():
-                    logits = model(eeg.to(device))
-                    loss = criterion(logits.cpu(), label)
-            # Compute the accuracy for current batch.
-                acc = (logits.argmax(dim=-1) == label.to(device).argmax(dim=-1)).float().mean()
-
-            # Record the loss and accuracy.
-                valid_loss.append(loss.item())
-                valid_accs.append(acc)
-            valid_loss = sum(valid_loss) / len(valid_loss)
-            valid_acc = sum(valid_accs) / len(valid_accs)
-            VL.append(valid_loss)
-            VA.append(valid_acc.cpu().item())
-        # Print the information.
-            print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
-
-
-            #绘制曲线
+    dataset_conf = { 'n_classes': 4, 'n_sub': 9, 'n_channels': 22, 'data_path': data_path, 'isStandard': True, 'LOSO': False}
+    train_conf = {'n_epochs': 1000, 'patience': 300, 'batch_size': 64, 'lr': 0.0009, 'device': 'cuda'}
+    tasks = [i for i in range(dataset_conf['n_sub'])]
+    from multiprocess import Pool
+    import multiprocess
+    with Pool(processes=dataset_conf['n_sub'],initializer=multiprocess.set_start_method('spawn',True)) as pool:
+        results = pool.starmap(train_subject, [(train_conf, dataset_conf, i) for i in tasks])
+    for i, result in enumerate(results):
+        best_kappa, TL, TA, VL, VA = result
         plt.plot(TA)
         plt.plot(VA)
         plt.title('Model accuracy')
@@ -449,14 +345,126 @@ def train():
         with open('acc'+str(i)+'.csv', 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerows([TA,VA])
+# %%
 
-            # early_stopping(valid_loss, model)
+def train_subject(train_conf, dataset_conf, i):
+    #BCIC2a 9人；SMR_BCI1 14人；OpenBMI 54人；
+    
+    criterion = nn.CrossEntropyLoss() 
+    model = ATCNet()
+    device = torch.device(train_conf['device'])
+    #加载数据集
+    X_train, _, y_train_onehot, X_test, _, y_test_onehot = get_data(dataset_conf['data_path'], i, dataset_conf['LOSO'], dataset_conf['isStandard'])
+    eeg_train = torch.from_numpy(X_train)
+    label_train = torch.from_numpy(y_train_onehot)
+    eeg_test = torch.from_numpy(X_test)
+    label_test = torch.from_numpy(y_test_onehot)
+    train_dataset=TensorDataset(eeg_train,label_train)
+    test_dataset=TensorDataset(eeg_test,label_test)
+    # val_dataset=TensorDataset(eeg_val,label_val)
+    train_loader = torch.utils.data.DataLoader(dataset=train_dataset,batch_size=train_conf['batch_size'], shuffle=True)
+    test_loader = torch.utils.data.DataLoader(dataset=test_dataset,batch_size=300, shuffle=False)
 
-            # if early_stopping.early_stop:
-            #     print("Early stopping")
-            #     break
-        break
+    # The number of training epochs.
+    early_stopping = EarlyStopping(train_conf['patience'], verbose=True)	
+    model.to(train_conf['device'])
+    optimizer = torch.optim.Adam(model.parameters(), lr=train_conf['lr'])
+    TL = []
+    TA = []
+    VL = []
+    VA = []
+    best_kappa = 0
+    #开始迭代训练
+    for epoch in range(train_conf['n_epochs']):
+        if early_stopping.early_stop:
+            print("Early stopping")
+            break
+        # ---------- Training ----------
+        model.train()
+        train_loss = []
+        train_accs = []
+        output_list = []
+        label_list = []
 
+    # Iterate the training set by batches.
+        for k,batch in enumerate(train_loader):
+            t1 = time.time()
+        # A batch consists of image data and corresponding labels.
+            eeg,label = batch
+            # eeg = eeg.transpose(0,2,1)
+            eeg = eeg.to(torch.float32)
+            # label = label.to(torch.float32)
+        # Forward the data. (Make sure data and model are on the same device.)
+            pred = model(eeg.to(device))
+            loss = criterion(pred.cpu(), label)
+            optimizer.zero_grad()
+        # Compute the gradients for parameters.
+            loss.backward()
 
+            #裁剪
+            nn.utils.clip_grad_norm_(model.conv_block.depthwise.parameters(), 1.0)
+            for j in range(5):
+                nn.utils.clip_grad_norm_(model.slideOut_list[j].parameters(), 0.25)
+            # nn.utils.clip_grad_norm_(model.out_2.parameters(), 0.25)
+        # Update the parameters with computed gradients.
+            optimizer.step()
+            train_loss.append(loss.item())
+            acc = (pred.argmax(dim=-1) == label.to(device).argmax(dim=-1)).float().mean()
+            train_accs.append(acc)
+            output_list.append(pred.argmax(dim=-1).cpu().numpy())
+            label_list.append(label.argmax(dim=-1))
+
+        train_loss = sum(train_loss) / len(train_loss)
+        train_acc = sum(train_accs) / len(train_accs)
+        output_list = np.concatenate(output_list)
+        label_list = np.concatenate(label_list)
+        kappa = cohen_kappa_score(output_list, label_list)
+        TL.append(train_loss)
+        TA.append(train_acc.cpu().item())
+        t2 = time.time()
+        print(t2-t1)
+        print(f"[ Train | {epoch + 1:03d}/{train_conf['n_epochs']:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}", "kappa = ", kappa)
+        model.eval()
+        valid_loss = []
+        valid_accs = []
+        output_list = []
+        label_list = []
+        #开始验证数据集
+        # Iterate the validation set by batches.
+        for k,batch in enumerate(test_loader):
+            eeg,label = batch
+            eeg = eeg.to(torch.float32)
+            # label = label.to(torch.float32)
+
+            # print(eeg.shape)
+            with torch.no_grad():
+                logits = model(eeg.to(device))
+                loss = criterion(logits.cpu(), label)
+        # Compute the accuracy for current batch.
+            acc = (logits.argmax(dim=-1) == label.to(device).argmax(dim=-1)).float().mean()
+
+        # Record the loss and accuracy.
+            valid_loss.append(loss.item())
+            valid_accs.append(acc)
+            output_list.append(logits.argmax(dim=-1).cpu().numpy())
+            label_list.append(label.argmax(dim=-1))
+
+        valid_loss = sum(valid_loss) / len(valid_loss)
+        valid_acc = sum(valid_accs) / len(valid_accs)
+        output_list = np.concatenate(output_list)
+        label_list = np.concatenate(label_list)
+        kappa = cohen_kappa_score(output_list, label_list)
+        VL.append(valid_loss)
+        VA.append(valid_acc.cpu().item())
+    # Print the information.
+        # print(f"[ Valid | {epoch + 1:03d}/{train_conf['n_epochs']:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}", "kappa = ", kappa)
+        early_stopping(valid_loss)
+        if kappa > best_kappa:
+            best_kappa = kappa
+    
+    return best_kappa, TL, TA, VL, VA
+
+# %%
 if __name__ == "__main__":
     train()
+# %%
