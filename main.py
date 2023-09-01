@@ -323,7 +323,7 @@ def getModel(model_name):
 #%%
 def run():
     # Get dataset path
-    data_path = os.path.expanduser('~') + '/ms/EEG-ATCNet/dataset/'
+    data_path = os.getcwd() + '/dataset/'
     
     # Create a folder to store the results of the experiment
     results_path = os.getcwd() + "/results"
